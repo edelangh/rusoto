@@ -3,6 +3,7 @@
 use std::fs::File;
 use std::io::Read;
 
+use hyper::client::Response;
 use super::{DispatchSignedRequest, HttpResponse, HttpDispatchError, SignedRequest};
 use super::{ProvideAwsCredentials, CredentialsError, AwsCredentials};
 use chrono::{Duration, UTC};
@@ -26,7 +27,7 @@ impl MockRequestDispatcher {
 	pub fn with_status(status: u16) -> MockRequestDispatcher {
 		let mut response = HttpResponse::default();
 		response.status = status;
-		MockRequestDispatcher { 
+		MockRequestDispatcher {
 			mock_response: response,
 			request_checker: None
 		}
@@ -56,6 +57,8 @@ impl DispatchSignedRequest for MockRequestDispatcher {
 		}
 		Ok(self.mock_response.clone())
 	}
+
+	fn dispatch_streamed(&self, request: &SignedRequest) -> Result<Response, HttpDispatchError> {}
 }
 
 pub trait ReadMockResponse {
@@ -79,5 +82,5 @@ impl ReadMockResponse for MockResponseReader {
 	    ));
 
         mock_response
-	} 
+	}
 }

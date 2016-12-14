@@ -13,7 +13,7 @@ use std::num::ParseIntError;
 use std::str::{FromStr, ParseBoolError};
 use std::str;
 
-use hyper::client::{Client, RedirectPolicy};
+use hyper::client::{Response, Client, RedirectPolicy};
 use md5;
 use rusoto_credential::{
     ProvideAwsCredentials,
@@ -10182,7 +10182,7 @@ impl<P, D> S3Client<P, D> where P: ProvideAwsCredentials, D: DispatchSignedReque
             ssekms_key_id: ssekms_key_id,
             content_disposition: content_disposition,
             metadata: HashMap::new(),
-            body: response.body,
+            body: response.body.clone().into_bytes(),
             website_redirect_location: website_redirect_location,
             expires: expires,
             cache_control: cache_control,
@@ -10198,6 +10198,29 @@ impl<P, D> S3Client<P, D> where P: ProvideAwsCredentials, D: DispatchSignedReque
             sse_customer_key_md5: sse_customer_key_md5,
         };
         Ok(s3_object)
+    }
+
+    /// Retrieves objects from Amazon S3.
+    pub fn get_object_streamed(&self, input: &GetObjectRequest) -> Result<Response, S3Error> {
+        let mut path = String::from("/");
+        if !is_dns_compatible(&input.bucket) {
+            path = format!("{}{}/", path, &input.bucket);
+        }
+        path = format!("{}{}", path, &input.key);
+        let mut request = SignedRequest::new("GET", "s3", self.region, &path);
+        let mut params = Params::new();
+
+        if is_dns_compatible(&input.bucket) {
+            let hostname = self.hostname(Some(&input.bucket));
+            request.set_hostname(Some(hostname));
+        }
+
+        params.put("Action", "GetObject");
+        GetObjectRequestWriter::write_params(&mut params, "", input);
+
+        request.set_params(params);
+        let mut result = try!(sign_and_execute_streamed(&self.dispatcher, &mut request, try!(self.credentials_provider.credentials())));
+        Ok(result)
     }
 
     /// Retrieves objects from Amazon S3.
@@ -11059,6 +11082,16 @@ fn extract_s3_temporary_endpoint_from_xml<T: Peek + Next>(stack: &mut T) -> Resu
     }
     Err(S3Error::new("Couldn't find redirect location for S3 bucket"))
 }
+
+
+fn sign_and_execute_streamed<D>(dispatcher: &D, request: &mut SignedRequest, creds: AwsCredentials) -> Result<Response, S3Error> where D: DispatchSignedRequest {
+    request.sign(&creds);
+    let response = try!(dispatcher.dispatch_streamed(request));
+    debug!("Sent request to AWS");
+
+    Ok(response)
+}
+
 
 fn sign_and_execute<D>(dispatcher: &D, request: &mut SignedRequest, creds: AwsCredentials) -> Result<HttpResponse, S3Error> where D: DispatchSignedRequest{
     request.sign(&creds);

@@ -32,9 +32,15 @@ lazy_static! {
             env!("CARGO_PKG_VERSION"), RUST_VERSION, env::consts::OS).as_bytes().to_vec()];
 }
 
-pub struct HttpResponse {
+pub struct HttpStreamedResponse {
     pub status: u16,
     pub body: Response,
+    pub headers: HashMap<String, String>
+}
+
+pub struct HttpResponse {
+    pub status: u16,
+    pub body: String,
     pub headers: HashMap<String, String>
 }
 
@@ -69,10 +75,83 @@ impl From<IoError> for HttpDispatchError {
 
 pub trait DispatchSignedRequest {
     fn dispatch(&self, request: &SignedRequest) -> Result<HttpResponse, HttpDispatchError>;
+
+    fn dispatch_streamed(&self, request: &SignedRequest) -> Result<Response, HttpDispatchError>;
 }
 
 impl DispatchSignedRequest for Client {
+
     fn dispatch(&self, request: &SignedRequest) -> Result<HttpResponse, HttpDispatchError> {
+        let hyper_method = match request.method().as_ref() {
+            "POST" => Method::Post,
+            "PUT" => Method::Put,
+            "DELETE" => Method::Delete,
+            "GET" => Method::Get,
+            "HEAD" => Method::Head,
+            v => return Err(HttpDispatchError { message: format!("Unsupported HTTP verb {}", v) })
+
+        };
+
+        // translate the headers map to a format Hyper likes
+        let mut hyper_headers = Headers::new();
+        for h in request.headers().iter() {
+            hyper_headers.set_raw(h.0.to_owned(), h.1.to_owned());
+        }
+
+        // Add a default user-agent header if one is not already present.
+        if !hyper_headers.has::<UserAgent>() {
+            hyper_headers.set_raw("user-agent".to_owned(), DEFAULT_USER_AGENT.clone());
+        }
+
+        let mut final_uri = format!("https://{}{}", request.hostname(), request.canonical_path());
+        if !request.canonical_query_string().is_empty() {
+            final_uri = final_uri + &format!("?{}", request.canonical_query_string());
+        }
+
+        if log_enabled!(Debug) {
+            let payload = request.payload().map(|mut payload_bytes| {
+                let mut payload_string = String::new();
+
+                payload_bytes.read_to_string(&mut payload_string)
+                    .map(|_| payload_string)
+                    .unwrap_or_else(|_| String::from("<non-UTF-8 data>"))
+            });
+
+            debug!("Full request: \n method: {}\n final_uri: {}\n payload: {:?}\nHeaders:\n", hyper_method, final_uri, payload);
+            for h in hyper_headers.iter() {
+                debug!("{}:{}", h.name(), h.value_string());
+            }
+        }
+
+        let mut hyper_response = match request.payload() {
+            None => try!(self.request(hyper_method, &final_uri).headers(hyper_headers).body("").send()),
+            Some(payload_contents) => try!(self.request(hyper_method, &final_uri).headers(hyper_headers).body(payload_contents).send()),
+        };
+
+
+        let mut body = String::new();
+        try!(hyper_response.read_to_string(&mut body));
+
+        if log_enabled!(Debug) {
+            debug!("Response body:\n{}", body);
+        }
+
+
+        let mut headers: HashMap<String, String> = HashMap::new();
+
+        for header in hyper_response.headers.iter() {
+            headers.insert(header.name().to_string(), header.value_string());
+        }
+
+        Ok(HttpResponse {
+            status: hyper_response.status.to_u16(),
+            body: body,
+            headers: headers
+        })
+
+    }
+
+    fn dispatch_streamed(&self, request: &SignedRequest) -> Result<Response, HttpDispatchError> {
         let hyper_method = match request.method().as_ref() {
             "POST" => Method::Post,
             "PUT" => Method::Put,
@@ -119,17 +198,6 @@ impl DispatchSignedRequest for Client {
             Some(payload_contents) => try!(self.request(hyper_method, &final_uri).headers(hyper_headers).body(payload_contents).send()),
         };
 
-        let mut headers: HashMap<String, String> = HashMap::new();
-
-        for header in hyper_response.headers.iter() {
-            headers.insert(header.name().to_string(), header.value_string());
-        }
-
-        Ok(HttpResponse {
-            status: hyper_response.status.to_u16(),
-            body: hyper_response,
-            headers: headers
-        })
-
+        Ok(hyper_response)
     }
 }
