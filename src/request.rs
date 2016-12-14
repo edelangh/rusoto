@@ -12,6 +12,7 @@ use std::fmt;
 use std::collections::HashMap;
 
 use hyper::Client;
+use hyper::client::Response;
 use hyper::Error as HyperError;
 use hyper::header::Headers;
 use hyper::header::UserAgent;
@@ -31,10 +32,9 @@ lazy_static! {
             env!("CARGO_PKG_VERSION"), RUST_VERSION, env::consts::OS).as_bytes().to_vec()];
 }
 
-#[derive(Clone, Default)]
 pub struct HttpResponse {
     pub status: u16,
-    pub body: String,
+    pub body: Response,
     pub headers: HashMap<String, String>
 }
 
@@ -114,17 +114,10 @@ impl DispatchSignedRequest for Client {
             }
         }
 
-        let mut hyper_response = match request.payload() {
+        let hyper_response = match request.payload() {
             None => try!(self.request(hyper_method, &final_uri).headers(hyper_headers).body("").send()),
             Some(payload_contents) => try!(self.request(hyper_method, &final_uri).headers(hyper_headers).body(payload_contents).send()),
         };
-
-        let mut body = String::new();
-        try!(hyper_response.read_to_string(&mut body));
-
-        if log_enabled!(Debug) {
-            debug!("Response body:\n{}", body);
-        }
 
         let mut headers: HashMap<String, String> = HashMap::new();
 
@@ -134,7 +127,7 @@ impl DispatchSignedRequest for Client {
 
         Ok(HttpResponse {
             status: hyper_response.status.to_u16(),
-            body: body,
+            body: hyper_response,
             headers: headers
         })
 

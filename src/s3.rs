@@ -10182,7 +10182,7 @@ impl<P, D> S3Client<P, D> where P: ProvideAwsCredentials, D: DispatchSignedReque
             ssekms_key_id: ssekms_key_id,
             content_disposition: content_disposition,
             metadata: HashMap::new(),
-            body: response.body.clone().into_bytes(),
+            body: response.body,
             website_redirect_location: website_redirect_location,
             expires: expires,
             cache_control: cache_control,
