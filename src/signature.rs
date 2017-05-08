@@ -12,9 +12,8 @@ use std::collections::btree_map::Entry;
 use std::str;
 
 use hyper::status::StatusCode;
-use ring::{digest, hmac};
 use rusoto_credential::AwsCredentials;
-use rustc_serialize::hex::ToHex;
+//use rustc_serialize::hex::ToHex;
 use time::Tm;
 use time::now_utc;
 use url::percent_encoding::{utf8_percent_encode, EncodeSet};
@@ -139,6 +138,7 @@ impl <'a> SignedRequest <'a> {
         self.params = params;
     }
 
+    #[allow(unused_variables, unused_mut)] // TODO: remove this derived
     pub fn sign(&mut self, creds: &AwsCredentials) {
         debug!("Creating request to send to AWS.");
         let hostname = match self.hostname {
@@ -207,11 +207,11 @@ impl <'a> SignedRequest <'a> {
         // use the hashed canonical request to build the string to sign
         let hashed_canonical_request = to_hexdigest(&canonical_request);
         let scope = format!("{}/{}/{}/aws4_request", date.strftime("%Y%m%d").unwrap(), self.region, &self.service);
-        let string_to_sign = string_to_sign(date, &hashed_canonical_request, &scope);
+        // let string_to_sign = string_to_sign(date, &hashed_canonical_request, &scope);
 
         // construct the signing key and sign the string with it
-        let signing_key = signing_key(creds.aws_secret_access_key(), date, &self.region.to_string(), &self.service);
-        let signature = signature(&string_to_sign, signing_key);
+        //let signing_key = signing_key(creds.aws_secret_access_key(), date, &self.region.to_string(), &self.service);
+        let signature = "TODO:";// signature(&string_to_sign, signing_key);
 
         // build the actual auth header
         let auth_header = format!("AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
@@ -221,7 +221,7 @@ impl <'a> SignedRequest <'a> {
     }
 
 }
-
+/*
 fn signature(string_to_sign: &str, signing_key: hmac::SigningKey) -> String {
     hmac::sign(&signing_key, string_to_sign.as_bytes()).as_ref().to_hex().to_string()
 }
@@ -241,7 +241,7 @@ fn signing_key(secret: &str, date: Tm, region: &str, service: &str) -> hmac::Sig
 
     hmac::SigningKey::new(&digest::SHA256, signing_hmac.as_ref())
 }
-
+*/
 /// Mark string as AWS4-HMAC-SHA256 hashed
 pub fn string_to_sign(date: Tm, hashed_canonical_request: &str, scope: &str) -> String {
     format!("AWS4-HMAC-SHA256\n{}\n{}\n{}",
@@ -370,9 +370,10 @@ fn encode_uri_strict(uri: &str) -> String {
     utf8_percent_encode(uri, StrictEncodeSet).collect::<String>()
 }
 
-fn to_hexdigest<T: AsRef<[u8]>>(t: T) -> String {
-    let h = digest::digest(&digest::SHA256, t.as_ref());
-    h.as_ref().to_hex().to_string()
+fn to_hexdigest<T: AsRef<[u8]>>(_t: T) -> String {
+    //let h = digest::digest(&digest::SHA256, t.as_ref());
+    //h.as_ref().to_hex().to_string()
+    String::from("TODO")
 }
 
 fn build_hostname(service: &str, region: Region) -> String {
